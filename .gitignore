@@ -1,0 +1,3 @@
+*.o
+sqlite-amalgamation-3500200
+catalog.db

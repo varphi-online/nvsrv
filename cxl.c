@@ -1,4 +1,6 @@
 #include "cxl.h"
+#include <ctype.h>
+#include <stdlib.h>
 #include <string.h>
 
 /*
@@ -22,4 +24,49 @@ char *cxl_join_with_delim(char *dest, char **strings, size_t number,
     target += strlen(strings[i]); // move to the end
   };
   return dest;
+}
+
+void strip_whitespace_i(char *str) {
+  if (str == NULL || *str == '\0') {
+    return;
+  }
+  char *start = str;
+  while (isspace((unsigned char)*start)) {
+    start++;
+  }
+  if (*start == '\0') {
+    *str = '\0';
+    return;
+  }
+  char *end = start + strlen(start) - 1;
+  while (end > start && isspace((unsigned char)*end)) {
+    end--;
+  }
+  *(end + 1) = '\0';
+  if (str != start) {
+    memmove(str, start, end - start + 2);
+  }
+}
+
+char *http_strip_whitespace(char *str) {
+  if (str == NULL || *str == '\0') {
+    return 0;
+  }
+  char *start = str;
+  while (isspace((unsigned char)*start)) {
+    start++;
+  }
+  if (*start == '\0') {
+    *str = '\0';
+    return 0;
+  }
+  char *end = start + strlen(start) - 1;
+  while (end > start && isspace((unsigned char)*end)) {
+    end--;
+  }
+  *(end + 1) = '\0';
+
+  char *out = malloc((end - start + 2) * sizeof(char));
+  memcpy(out, start, end - start + 2);
+  return out;
 }

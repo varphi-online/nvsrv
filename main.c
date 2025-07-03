@@ -99,15 +99,30 @@ char *search_course(sqlite3 *db, char *err_msg) {
   return strcat(out, "]");
 }
 
-void req_handle(http_request *request) {
+void req_handle(http_request *request, void **context) {
   puts("recieved");
-  printf("%s\n\n%s", request->request_line, request->headers);
+  printf("------------\n"
+         "Request-Line: \n"
+         "\t%s %s %s\n\n"
+         "Headers: \n"
+         "%s\n"
+         "Body: \n"
+         "\t%s\n"
+         "------------\n",
+         http_method_str[request->request_line->method],
+         request->request_line->request_uri,
+         http_version_str[request->request_line->http_version],
+         http_headers_to_string(request->headers), request->body);
 
   http_response response = {0};
-  http_set_response_status(&response, HTTP_OK);
+  if (!strstr(request->request_line->request_uri, "/api/course_search")) {
+    response.body = search_course((sqlite3 *)context[0], (char *)context[1]);
+  }
+
+  http_set_response_status(&response, response.body ? HTTP_OK : HTTP_NOT_FOUND);
   http_set_response_header(&response, "Content-Type", CONTENT_TYPE_TEXT);
-  response.body =
-      "<p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Qui dicta minus molestiae vel beatae natus eveniet ratione temporibus aperiam harum alias officiis assumenda officia quibusdam deleniti eos cupiditate dolore doloribus!</p>\
+
+  "<p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Qui dicta minus molestiae vel beatae natus eveniet ratione temporibus aperiam harum alias officiis assumenda officia quibusdam deleniti eos cupiditate dolore doloribus!</p>\
 <p>Ad dolore dignissimos asperiores dicta facere optio quod commodi nam tempore recusandae. Rerum sed nulla eum vero expedita ex delectus voluptates rem at neque quos facere sequi unde optio aliquam!</p>\
 <p>Tenetur quod quidem in voluptatem corporis dolorum dicta sit pariatur porro quaerat autem ipsam odit quam beatae tempora quibusdam illum! Modi velit odio nam nulla unde amet odit pariatur at!</p>\
 <p>Consequatur rerum amet fuga expedita sunt et tempora saepe? Iusto nihil explicabo perferendis quos provident delectus ducimus necessitatibus reiciendis optio tempora unde earum doloremque commodi laudantium ad nulla vel odio?</p><p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Qui dicta minus molestiae vel beatae natus eveniet ratione temporibus aperiam harum alias officiis assumenda officia quibusdam deleniti eos cupiditate dolore doloribus!</p>\
@@ -115,9 +130,8 @@ void req_handle(http_request *request) {
 <p>Tenetur quod quidem in voluptatem corporis dolorum dicta sit pariatur porro quaerat autem ipsam odit quam beatae tempora quibusdam illum! Modi velit odio nam nulla unde amet odit pariatur at!</p>\
 <p>Consequatur rerum amet fuga expedita sunt et tempora saepe? Iusto nihil explicabo perferendis quos provident delectus ducimus necessitatibus reiciendis optio tempora unde earum doloremque commodi laudantium ad nulla vel odio?</p>";
 
-  printf("%s", response.headers);
-
   http_respond(&response, request);
+  free(response.body);
 }
 
 int main() {
@@ -133,7 +147,11 @@ int main() {
     return 1;
   }
 
-  struct http_server server = http_server_init("8080", req_handle);
+  void *context[2];
+  context[0] = db;
+  context[1] = err_msg;
+
+  struct http_server server = http_server_init("8080", req_handle, context);
   http_server_listen(server);
 
   char *result = search_course(db, err_msg);

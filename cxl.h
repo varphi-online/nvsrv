@@ -6,4 +6,10 @@
 char *cxl_join_with_delim(char *dest, char **strings, size_t number,
                           char *delimiter);
 
+// Destructively strips a string's whitespace in place, result
+// is passed pointer
+void strip_whitespace_i(char *str);
+
+// Returns a new string with whitespace stripped
+char *strip_whitespace(char *str);
 #endif

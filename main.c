@@ -1,6 +1,7 @@
-#include "cxl.h"
-#include "http.h"
-#include "sqlite3.h"
+#include "lib/cxl.h"
+#include "lib/http.h"
+#include "lib/json.h"
+#include "lib/sqlite3.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -122,13 +123,34 @@ void req_handle(http_request *request, void **context) {
   http_set_response_status(&response, response.body ? HTTP_OK : HTTP_NOT_FOUND);
   http_set_response_header(&response, "Content-Type", CONTENT_TYPE_TEXT);
 
-  "<p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Qui dicta minus molestiae vel beatae natus eveniet ratione temporibus aperiam harum alias officiis assumenda officia quibusdam deleniti eos cupiditate dolore doloribus!</p>\
-<p>Ad dolore dignissimos asperiores dicta facere optio quod commodi nam tempore recusandae. Rerum sed nulla eum vero expedita ex delectus voluptates rem at neque quos facere sequi unde optio aliquam!</p>\
-<p>Tenetur quod quidem in voluptatem corporis dolorum dicta sit pariatur porro quaerat autem ipsam odit quam beatae tempora quibusdam illum! Modi velit odio nam nulla unde amet odit pariatur at!</p>\
-<p>Consequatur rerum amet fuga expedita sunt et tempora saepe? Iusto nihil explicabo perferendis quos provident delectus ducimus necessitatibus reiciendis optio tempora unde earum doloremque commodi laudantium ad nulla vel odio?</p><p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Qui dicta minus molestiae vel beatae natus eveniet ratione temporibus aperiam harum alias officiis assumenda officia quibusdam deleniti eos cupiditate dolore doloribus!</p>\
-<p>Ad dolore dignissimos asperiores dicta facere optio quod commodi nam tempore recusandae. Rerum sed nulla eum vero expedita ex delectus voluptates rem at neque quos facere sequi unde optio aliquam!</p>\
-<p>Tenetur quod quidem in voluptatem corporis dolorum dicta sit pariatur porro quaerat autem ipsam odit quam beatae tempora quibusdam illum! Modi velit odio nam nulla unde amet odit pariatur at!</p>\
-<p>Consequatur rerum amet fuga expedita sunt et tempora saepe? Iusto nihil explicabo perferendis quos provident delectus ducimus necessitatibus reiciendis optio tempora unde earum doloremque commodi laudantium ad nulla vel odio?</p>";
+  /*
+"<p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Qui dicta minus
+molestiae vel beatae natus eveniet ratione temporibus aperiam harum alias
+officiis assumenda officia quibusdam deleniti eos cupiditate dolore
+doloribus!</p>\
+<p>Ad dolore dignissimos asperiores dicta facere optio quod commodi nam tempore
+recusandae. Rerum sed nulla eum vero expedita ex delectus voluptates rem at
+neque quos facere sequi unde optio aliquam!</p>\
+<p>Tenetur quod quidem in voluptatem corporis dolorum dicta sit pariatur porro
+quaerat autem ipsam odit quam beatae tempora quibusdam illum! Modi velit odio
+nam nulla unde amet odit pariatur at!</p>\
+<p>Consequatur rerum amet fuga expedita sunt et tempora saepe? Iusto nihil
+explicabo perferendis quos provident delectus ducimus necessitatibus reiciendis
+optio tempora unde earum doloremque commodi laudantium ad nulla vel
+odio?</p><p>Lorem ipsum dolor sit amet, consectetur adipisicing elit. Qui dicta
+minus molestiae vel beatae natus eveniet ratione temporibus aperiam harum alias
+officiis assumenda officia quibusdam deleniti eos cupiditate dolore
+doloribus!</p>\
+<p>Ad dolore dignissimos asperiores dicta facere optio quod commodi nam tempore
+recusandae. Rerum sed nulla eum vero expedita ex delectus voluptates rem at
+neque quos facere sequi unde optio aliquam!</p>\
+<p>Tenetur quod quidem in voluptatem corporis dolorum dicta sit pariatur porro
+quaerat autem ipsam odit quam beatae tempora quibusdam illum! Modi velit odio
+nam nulla unde amet odit pariatur at!</p>\ <p>Consequatur rerum amet fuga
+expedita sunt et tempora saepe? Iusto nihil explicabo perferendis quos provident
+delectus ducimus necessitatibus reiciendis optio tempora unde earum doloremque
+commodi laudantium ad nulla vel odio?</p>";
+*/
 
   http_respond(&response, request);
   free(response.body);
@@ -151,12 +173,20 @@ int main() {
   context[0] = db;
   context[1] = err_msg;
 
-  struct http_server server = http_server_init("8080", req_handle, context);
-  http_server_listen(server);
+  json_element *test_obj = calloc(1, sizeof(json_element));
+  test_obj->type = JSON_OBJECT;
+  json_element test_obj2 = {.type = JSON_STRING, ._ptr = &"WAZZUP"};
+  json_set_key(test_obj, "test", &test_obj2);
+  printf("%s", json_get_key(test_obj, "test")->_ptr);
+  // json_set_key(test_obj, "test", NULL);
+  json_free_element(test_obj);
 
-  char *result = search_course(db, err_msg);
-  printf("%s", result);
-  free(result);
+  // struct http_server server = http_server_init("8080", req_handle, context);
+  // http_server_listen(server);
+
+  // char *result = search_course(db, err_msg);
+  // printf("%s", result);
+  // free(result);
 
   sqlite3_close(db);
   return 1;

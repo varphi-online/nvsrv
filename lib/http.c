@@ -120,7 +120,7 @@ int http_parse_request(char *request_str, http_request *request) {
 
   // Begin HEAD parse -------
 
-  /* General  is allocate size equal to the string that contains ALL
+  /* General idea is allocate size equal to the string that contains ALL
    * headers, then, each http_header in the http_request_headers linked-list
    * will point to a segment of that allocated memory, with each segment being a
    * null-terminated string. Essentially:

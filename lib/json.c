@@ -208,96 +208,113 @@ json_element *json_str(char *str) {
   return out;
 }
 
-// forward decl
 void _json_stringify_internal(json_element *element, bool pretty_print,
                               FILE *buffer);
 
-void _json_stringify_internal_obj(_json_kv_entry *root, bool pretty_print,
-                                  FILE *buffer) {
-  if (root == NULL)
-    return;
-  _json_stringify_internal(root->key, pretty_print, buffer);
-  fprintf(buffer, ":");
-  _json_stringify_internal(root->value, pretty_print, buffer);
-
-  if (root->next) {
-    fputc(',', buffer);
-    _json_stringify_internal_obj(root->next, pretty_print, buffer);
-  }
-}
-
 void _json_stringify_internal(json_element *element, bool pretty_print,
                               FILE *buffer) {
-  if (element->type != JSON_NULL && !element->_ptr)
+  if (element == NULL) {
     return;
+  }
+
   switch (element->type) {
   case JSON_STRING:
-    if (element->_ptr)
-      fprintf(buffer, "\"");
-    char *tmp = element->_ptr;
-    while (*tmp) {
-      unsigned char c = *tmp;
-      switch (c) {
-      case '"':
-        fprintf(buffer, "\\\"");
-        break;
-      case '\\':
-        fprintf(buffer, "\\\\");
-        break;
-      case '/':
-        fprintf(buffer, "\\/");
-        break;
-      case '\b':
-        fprintf(buffer, "\\b");
-        break;
-      case '\f':
-        fprintf(buffer, "\\f");
-        break;
-      case '\n':
-        fprintf(buffer, "\\n");
-        break;
-      case '\r':
-        fprintf(buffer, "\\r");
-        break;
-      case '\t':
-        fprintf(buffer, "\\t");
-        break;
-      default:
-        if (c >= 0x00 && c <= 0x1F) {
-          fprintf(buffer, "\\u%04x", c);
-        } else {
-          fputc(c, buffer);
+    fputc('"', buffer);
+    if (element->_ptr) {
+      char *p = element->_ptr;
+      while (*p) {
+        unsigned char c = *p;
+        switch (c) {
+        case '"':
+          fputs("\\\"", buffer);
+          break;
+        case '\\':
+          fputs("\\\\", buffer);
+          break;
+        case '/':
+          fputs("\\/", buffer);
+          break;
+        case '\b':
+          fputs("\\b", buffer);
+          break;
+        case '\f':
+          fputs("\\f", buffer);
+          break;
+        case '\n':
+          fputs("\\n", buffer);
+          break;
+        case '\r':
+          fputs("\\r", buffer);
+          break;
+        case '\t':
+          fputs("\\t", buffer);
+          break;
+        default:
+          if (c < 0x20) {
+            fprintf(buffer, "\\u%04x", c);
+          } else {
+            fputc(c, buffer);
+          }
+          break;
         }
-        break;
+        p++;
       }
-      tmp++;
     }
-    fprintf(buffer, "\"");
-
+    fputc('"', buffer);
     break;
+
   case JSON_ARRAY:
     fputc('[', buffer);
-    _json_array_internal *internal = (_json_array_internal *)element->_ptr;
-    for (size_t i = 0; i < internal->count; i++) {
-      _json_stringify_internal(internal->head[i], pretty_print, buffer);
-      if (i + 1 < internal->count)
-        fputc(',', buffer);
+    if (element->_ptr) {
+      _json_array_internal *internal = (_json_array_internal *)element->_ptr;
+      if (internal->count > 0) {
+        _json_stringify_internal(internal->head[0], pretty_print, buffer);
+        for (size_t i = 1; i < internal->count; i++) {
+          fputc(',', buffer);
+          _json_stringify_internal(internal->head[i], pretty_print, buffer);
+        }
+      }
     }
     fputc(']', buffer);
     break;
+
   case JSON_OBJECT:
     fputc('{', buffer);
-    _json_stringify_internal_obj(element->_ptr, pretty_print, buffer);
+    if (element->_ptr) {
+      _json_kv_entry *current = element->_ptr;
+      bool first = true;
+      while (current) {
+        if (!first) {
+          fputc(',', buffer);
+        }
+        _json_stringify_internal(current->key, pretty_print, buffer);
+        fputc(':', buffer);
+        _json_stringify_internal(current->value, pretty_print, buffer);
+        first = false;
+        current = current->next;
+      }
+    }
     fputc('}', buffer);
     break;
+
   case JSON_NUMBER:
-    fprintf(buffer, "%f", *((float *)element->_ptr));
+    if (element->_ptr) {
+      fprintf(buffer, "%f", *((float *)element->_ptr));
+    } else {
+      fputs("null", buffer);
+    }
     break;
+
   case JSON_BOOLEAN:
-    fprintf(buffer, "%s", element->_ptr ? "true" : "false");
+    if (element->_ptr) {
+      fputs(*((bool *)element->_ptr) ? "true" : "false", buffer);
+    } else {
+      fputs("null", buffer);
+    }
     break;
+
   case JSON_NULL:
-    fprintf(buffer, "null");
+    fputs("null", buffer);
     break;
   }
 }
@@ -306,6 +323,9 @@ char *json_stringify(json_element *element, bool pretty_print) {
   char *buffer;
   size_t size;
   FILE *stream = open_memstream(&buffer, &size);
+  if (!stream) {
+    return NULL;
+  }
   _json_stringify_internal(element, pretty_print, stream);
   fclose(stream);
   return buffer;

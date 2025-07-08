@@ -14,90 +14,34 @@ typedef struct {
 
 // Outputs a json object representing a course
 int course_from_row(void *data, int argc, char **argv, char **azColName) {
-  CourseList *courselist = (CourseList *)data;
-
-  size_t totalLen = 3; // "{}\n"
+  json_element *outgoing = *((json_element **)data);
+  json_element *current_row = json_obj(0, 0);
+  json_append(outgoing, current_row);
   for (int i = 0; i < argc; i++) {
-    totalLen +=
-        strlen(azColName[i]) + strlen(argv[i] ? argv[i] : "null") +
-        7; // includes space for four quotes, a colon, a comma and nullterm
+    json_set_key(current_row, azColName[i],
+                 argv[i] ? json_str(argv[i]) : json_nul());
   }
-  char *buffer = malloc(totalLen);
-  if (!buffer)
-    return 0;
-
-  int offset = 1;
-  buffer[0] = '{';
-
-  for (int i = 0; i < argc; i++) {
-    // BUG: in scraper or here, need to remove <br /> tags (specifically in the
-    // attributes field) as unescaped html tags are not RFC 8259 JSON compliant
-    // workaround is skipping attributes field
-
-    char *format = argv[i] ? "\"%s\": \"%s\"" : "\"%s\": %s";
-    if (strcmp(azColName[i], "attributes"))
-      offset += sprintf(buffer + offset, format, azColName[i],
-                        argv[i] ? argv[i] : "null");
-    if (i < argc - 2) {
-      offset += sprintf(buffer + offset, ",");
-    }
-  }
-  sprintf(buffer + offset, "}");
-
-  // Aggregating rows into courselist
-
-  if (courselist->count >= courselist->capacity) {
-    courselist->courses =
-        realloc(courselist->courses, courselist->capacity * 2 * sizeof(char *));
-    courselist->capacity *= 2;
-  }
-
-  courselist->courses[courselist->count] = buffer;
-  courselist->count += 1;
-
   return 0;
 }
 
 char *search_course(sqlite3 *db, char *err_msg) {
-  // aggregate rows for usage
-  size_t initial_capacity = 100;
-  CourseList courselist;
-  courselist.courses = malloc(initial_capacity * sizeof(char *));
-  if (!courselist.courses) {
-    fprintf(stderr, "Initial malloc failed\n");
-    sqlite3_close(db);
-    return 0;
-  }
-  courselist.count = 0;
-  courselist.capacity = initial_capacity;
+  json_element *outgoing = json_arr(0);
 
-  char *sql = "SELECT * FROM courses WHERE LOWER(department) LIKE \"csc\";";
-  int rc = sqlite3_exec(db, sql, course_from_row, &courselist, &err_msg);
+  char *sql =
+      "SELECT * FROM courses WHERE LOWER(department) LIKE \"csc\" LIMIT 15;";
+  int rc = sqlite3_exec(db, sql, course_from_row, &outgoing, &err_msg);
+
   if (rc != SQLITE_OK) {
     fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
-
     sqlite3_free(err_msg);
     sqlite3_close(db);
     return 0;
   }
 
-  // Join strings into one str object
-  size_t allocSize = 0;
-  for (int i = 0; i < courselist.count; i++) {
-    allocSize += strlen(courselist.courses[i]);
-  }
+  char *out = json_stringify(outgoing, false);
+  json_free_element(outgoing);
 
-  char *out = malloc(sizeof(char) * (allocSize + courselist.count + 4));
-  out[0] = '[';
-
-  cxl_join_with_delim(out + 1, courselist.courses, courselist.count, ",");
-
-  for (int i = 0; i < courselist.count; i++) {
-    free(courselist.courses[i]);
-  }
-  free(courselist.courses);
-
-  return strcat(out, "]");
+  return out;
 }
 
 void req_handle(http_request *request, void **context) {
@@ -173,6 +117,7 @@ int main() {
   context[0] = db;
   context[1] = err_msg;
 
+  /*
   json_element *test_obj =
       json_obj("test", json_str("hello and good fre\b\taki\rn by\4 ae"));
   json_set_key(test_obj, "another one", json_arr(json_str("and a third")));
@@ -183,14 +128,16 @@ int main() {
   printf("%s", testo);
   free(testo);
   json_free_element(test_obj);
+  */
 
-  // struct http_server server = http_server_init("8080", req_handle,
-  // context); http_server_listen(server);
+  struct http_server server = http_server_init("8080", req_handle, context);
+  http_server_listen(server);
 
-  // char *result = search_course(db, err_msg);
-  // printf("%s", result);
-  // free(result);
-
+  /*
+  char *result = search_course(db, err_msg);
+  printf("%s", result);
+  free(result);
+*/
   sqlite3_close(db);
   return 1;
 }

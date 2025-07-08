@@ -1,47 +1,28 @@
 #include "json.h"
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#define JSON_ARRAY_START_SIZE 10
+
 typedef struct _json_kv_entry {
-  const char *key;
+  json_element *key;
   json_element *value;
   struct _json_kv_entry *next;
 } _json_kv_entry;
 
 // Frees heap allocated kv entry and its children
 void _json_kv_free(_json_kv_entry *kv) {
-  free((void *)kv->key);
+  json_free_element(kv->key);
   json_free_element(kv->value);
-}
-
-void json_free_element(json_element *element) {
-  if (element == NULL)
-    return;
-  switch (element->type) {
-  case JSON_OBJECT:
-
-    if (element->_ptr) {
-      _json_kv_entry *current = element->_ptr;
-      _json_kv_entry *next;
-      while (current != NULL) {
-        next = current->next;
-        _json_kv_free(current);
-        free(current);
-        current = next;
-      }
-    }
-    free(element);
-    break;
-    // TODO: all other types
-  }
 }
 
 json_element **_json_kv_insert(_json_kv_entry **root, char *key) {
   if (*root == NULL) {
     *root = calloc(1, sizeof(_json_kv_entry));
-    (*root)->key = strdup(key);
+    (*root)->key = json_str(key);
     return &(*root)->value;
   }
   _json_kv_entry *current = *root;
@@ -49,14 +30,14 @@ json_element **_json_kv_insert(_json_kv_entry **root, char *key) {
     current = current->next;
   }
   current->next = calloc(1, sizeof(_json_kv_entry));
-  current->next->key = strdup(key);
+  current->next->key = json_str(key);
   return &current->next->value;
 }
 
 json_element *_json_kv_search(_json_kv_entry *root, char *key) {
   _json_kv_entry *current = root;
   while (current) {
-    if (strcmp(current->key, key) == 0)
+    if (strcmp(current->key->_ptr, key) == 0)
       return current->value;
     current = current->next;
   }
@@ -68,7 +49,7 @@ void _json_kv_delete(_json_kv_entry **root, char *key) {
   _json_kv_entry *prev = NULL;
 
   while (current) {
-    if (strcmp(current->key, key) == 0) {
+    if (strcmp(current->key->_ptr, key) == 0) {
       if (prev) {
         prev->next = current->next;
       } else {
@@ -96,7 +77,7 @@ int json_set_key(json_element *object, char *key, json_element *value) {
 
   _json_kv_entry *current = object->_ptr;
   while (current != NULL) {
-    if (strcmp(current->key, key) == 0) {
+    if (strcmp(current->key->_ptr, key) == 0) {
       json_free_element(current->value);
       current->value = value;
       return 0;
@@ -118,6 +99,249 @@ json_element *json_get_key(json_element *object, char *key) {
   return _json_kv_search(object->_ptr, key);
 }
 
+typedef struct _json_array_internal {
+  size_t capacity;
+  size_t count;
+  json_element **head;
+} _json_array_internal;
+
+void json_append(json_element *array, json_element *to_append) {
+  if (array->type != JSON_ARRAY || to_append == NULL)
+    return;
+  _json_array_internal **internal_ptr = (_json_array_internal **)&array->_ptr;
+  if (*internal_ptr == NULL) {
+    *internal_ptr = calloc(1, sizeof(_json_array_internal));
+    (*internal_ptr)->head =
+        calloc(JSON_ARRAY_START_SIZE, sizeof(json_element *));
+    (*internal_ptr)->capacity = JSON_ARRAY_START_SIZE;
+  }
+
+  _json_array_internal *internal = *internal_ptr;
+  if (internal->count > internal->capacity - 1) {
+    internal->head = realloc(internal->head,
+                             internal->capacity * 2 * sizeof(json_element *));
+    internal->capacity *= 2;
+  }
+  internal->head[internal->count] = to_append;
+  internal->count++;
+};
+
+json_element *json_pop(json_element *array) {
+  if (array == NULL || array->type != JSON_ARRAY)
+    return NULL;
+  _json_array_internal **ip = (_json_array_internal **)&array->_ptr;
+  if (*ip == NULL)
+    return NULL;
+  _json_array_internal *internal = *ip;
+  if (internal->count == 0) {
+    return NULL;
+  }
+  internal->count--;
+  json_element *out = internal->head[internal->count];
+  internal->head[internal->count] = NULL;
+  return out;
+};
+
+json_element *json_get_index(json_element *array, int index) {
+  if (array == NULL || array->type != JSON_ARRAY)
+    return NULL;
+  _json_array_internal **ip = (_json_array_internal **)&array->_ptr;
+  if (*ip == NULL)
+    return NULL;
+  _json_array_internal *internal = *ip;
+  return internal->head[index];
+}
+
+void json_free_element(json_element *element) {
+  if (element == NULL)
+    return;
+  if (element->type != JSON_NULL && !element->_ptr)
+    return;
+  switch (element->type) {
+  case JSON_OBJECT:
+
+    if (element->_ptr) {
+      _json_kv_entry *current = element->_ptr;
+      _json_kv_entry *next;
+      while (current != NULL) {
+        next = current->next;
+        _json_kv_free(current);
+        free(current);
+        current = next;
+      }
+    }
+    break;
+  case JSON_ARRAY:
+    if (!element->_ptr)
+      break;
+    _json_array_internal *internal = (_json_array_internal *)element->_ptr;
+    for (size_t i = 0; i < internal->count; i++) {
+      json_free_element(internal->head[i]);
+    }
+    free(internal->head);
+    free(element->_ptr);
+    break;
+  case JSON_STRING:
+    free(element->_ptr);
+    break;
+  case JSON_BOOLEAN:
+    free(element->_ptr);
+    break;
+  case JSON_NUMBER:
+    free(element->_ptr);
+    break;
+  case JSON_NULL:
+    break;
+  }
+  free(element);
+}
+
+inline json_element *json_create_element(json_value type) {
+  json_element *out = calloc(1, sizeof(json_element));
+  out->type = type;
+  return out;
+};
+
+json_element *json_str(char *str) {
+  json_element *out = json_create_element(JSON_STRING);
+  out->_ptr = strdup(str);
+  return out;
+}
+
+// forward decl
+void _json_stringify_internal(json_element *element, bool pretty_print,
+                              FILE *buffer);
+
+void _json_stringify_internal_obj(_json_kv_entry *root, bool pretty_print,
+                                  FILE *buffer) {
+  if (root == NULL)
+    return;
+  _json_stringify_internal(root->key, pretty_print, buffer);
+  fprintf(buffer, ":");
+  _json_stringify_internal(root->value, pretty_print, buffer);
+
+  if (root->next) {
+    fputc(',', buffer);
+    _json_stringify_internal_obj(root->next, pretty_print, buffer);
+  }
+}
+
+void _json_stringify_internal(json_element *element, bool pretty_print,
+                              FILE *buffer) {
+  if (element->type != JSON_NULL && !element->_ptr)
+    return;
+  switch (element->type) {
+  case JSON_STRING:
+    if (element->_ptr)
+      fprintf(buffer, "\"");
+    char *tmp = element->_ptr;
+    while (*tmp) {
+      unsigned char c = *tmp;
+      switch (c) {
+      case '"':
+        fprintf(buffer, "\\\"");
+        break;
+      case '\\':
+        fprintf(buffer, "\\\\");
+        break;
+      case '/':
+        fprintf(buffer, "\\/");
+        break;
+      case '\b':
+        fprintf(buffer, "\\b");
+        break;
+      case '\f':
+        fprintf(buffer, "\\f");
+        break;
+      case '\n':
+        fprintf(buffer, "\\n");
+        break;
+      case '\r':
+        fprintf(buffer, "\\r");
+        break;
+      case '\t':
+        fprintf(buffer, "\\t");
+        break;
+      default:
+        if (c >= 0x00 && c <= 0x1F) {
+          fprintf(buffer, "\\u%04x", c);
+        } else {
+          fputc(c, buffer);
+        }
+        break;
+      }
+      tmp++;
+    }
+    fprintf(buffer, "\"");
+
+    break;
+  case JSON_ARRAY:
+    fputc('[', buffer);
+    _json_array_internal *internal = (_json_array_internal *)element->_ptr;
+    for (size_t i = 0; i < internal->count; i++) {
+      _json_stringify_internal(internal->head[i], pretty_print, buffer);
+      if (i + 1 < internal->count)
+        fputc(',', buffer);
+    }
+    fputc(']', buffer);
+    break;
+  case JSON_OBJECT:
+    fputc('{', buffer);
+    _json_stringify_internal_obj(element->_ptr, pretty_print, buffer);
+    fputc('}', buffer);
+    break;
+  case JSON_NUMBER:
+    fprintf(buffer, "%f", *((float *)element->_ptr));
+    break;
+  case JSON_BOOLEAN:
+    fprintf(buffer, "%s", element->_ptr ? "true" : "false");
+    break;
+  case JSON_NULL:
+    fprintf(buffer, "null");
+    break;
+  }
+}
+
+char *json_stringify(json_element *element, bool pretty_print) {
+  char *buffer;
+  size_t size;
+  FILE *stream = open_memstream(&buffer, &size);
+  _json_stringify_internal(element, pretty_print, stream);
+  fclose(stream);
+  return buffer;
+}
+
+json_element *json_num(float number) {
+  json_element *out = json_create_element(JSON_NUMBER);
+  out->_ptr = (float *)malloc(sizeof(float));
+  *((float *)out->_ptr) = number;
+  return out;
+}
+
+json_element *json_arr(json_element *first) {
+  json_element *out = json_create_element(JSON_ARRAY);
+  json_append(out, first);
+  return out;
+}
+
+json_element *json_nul() {
+  json_element *out = json_create_element(JSON_NULL);
+  return out;
+}
+
+json_element *json_boo(bool value) {
+  json_element *out = json_create_element(JSON_BOOLEAN);
+  out->_ptr = (bool *)malloc(sizeof(bool));
+  *((bool *)out->_ptr) = value;
+  return out;
+}
+
+json_element *json_obj(char *key, json_element *value) {
+  json_element *out = json_create_element(JSON_OBJECT);
+  json_set_key(out, key, value);
+  return out;
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /*
  typedef struct _member_tree_node {
@@ -134,6 +358,7 @@ json_element **_json_member_tree_insert(_member_tree_node **root,
   while (*current) {
     int comparison = strcmp((*current)->key, key);
     if (comparison == 0)
+    fputc('[', buffer);
       return &(*current)->value;
     current = (comparison > 0) ? &(*current)->left : &(*current)->right;
   }

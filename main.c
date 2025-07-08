@@ -173,16 +173,19 @@ int main() {
   context[0] = db;
   context[1] = err_msg;
 
-  json_element *test_obj = calloc(1, sizeof(json_element));
-  test_obj->type = JSON_OBJECT;
-  json_element test_obj2 = {.type = JSON_STRING, ._ptr = &"WAZZUP"};
-  json_set_key(test_obj, "test", &test_obj2);
-  printf("%s", json_get_key(test_obj, "test")->_ptr);
-  // json_set_key(test_obj, "test", NULL);
+  json_element *test_obj =
+      json_obj("test", json_str("hello and good fre\b\taki\rn by\4 ae"));
+  json_set_key(test_obj, "another one", json_arr(json_str("and a third")));
+  json_append(json_get_key(test_obj, "another one"), json_nul());
+  json_append(json_get_key(test_obj, "another one"), json_boo(false));
+  json_append(json_get_key(test_obj, "another one"), json_num(2));
+  char *testo = json_stringify(test_obj, false);
+  printf("%s", testo);
+  free(testo);
   json_free_element(test_obj);
 
-  // struct http_server server = http_server_init("8080", req_handle, context);
-  // http_server_listen(server);
+  // struct http_server server = http_server_init("8080", req_handle,
+  // context); http_server_listen(server);
 
   // char *result = search_course(db, err_msg);
   // printf("%s", result);

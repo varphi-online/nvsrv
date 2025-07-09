@@ -44,6 +44,8 @@ json_element *json_get_index(json_element *array, int index);
 
 char *json_stringify(json_element *element, bool pretty_print);
 
+json_element *json_parse(char *input);
+
 // creates a json_element of type JSON_STRING and populates it with the string
 // passed
 json_element *json_str(char *str);

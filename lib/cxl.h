@@ -12,4 +12,7 @@ void strip_whitespace_i(char *str);
 
 // Returns a new string with whitespace stripped
 char *strip_whitespace(char *str);
+
+typedef struct StringBuilder {
+} StringBuilder;
 #endif

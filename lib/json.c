@@ -1,4 +1,5 @@
 #include "json.h"
+#include <ctype.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -14,7 +15,7 @@ typedef struct _json_kv_entry {
 } _json_kv_entry;
 
 // Frees heap allocated kv entry and its children
-void _json_kv_free(_json_kv_entry *kv) {
+static void _json_kv_free(_json_kv_entry *kv) {
   json_free_element(kv->key);
   json_free_element(kv->value);
 }
@@ -155,11 +156,8 @@ json_element *json_get_index(json_element *array, int index) {
 void json_free_element(json_element *element) {
   if (element == NULL)
     return;
-  if (element->type != JSON_NULL && !element->_ptr)
-    return;
   switch (element->type) {
   case JSON_OBJECT:
-
     if (element->_ptr) {
       _json_kv_entry *current = element->_ptr;
       _json_kv_entry *next;
@@ -208,8 +206,157 @@ json_element *json_str(char *str) {
   return out;
 }
 
-void _json_stringify_internal(json_element *element, bool pretty_print,
-                              FILE *buffer);
+static void skip_whitespace(char **c) {
+  while (isspace(**c))
+    (*c)++;
+}
+
+static json_element *parse_str(char **cursor_ptr) {
+  size_t i = 0, size = 256;
+  char *buf = malloc(size);
+  if (!buf)
+    return NULL;
+  while (**cursor_ptr != '\"' && **cursor_ptr) {
+    if (i >= size - 1)
+      if (!(buf = realloc(buf, size *= 2)))
+        return NULL;
+    if (**cursor_ptr == '\\') {
+      (*cursor_ptr)++;
+      switch (*(*cursor_ptr)++) {
+      case '\"':
+        buf[i++] = '\"';
+        break;
+      case '\\':
+        buf[i++] = '\\';
+        break;
+      case 'b':
+        buf[i++] = '\b';
+        break;
+      case 'f':
+        buf[i++] = '\f';
+        break;
+      case 'n':
+        buf[i++] = '\n';
+        break;
+      case 'r':
+        buf[i++] = '\r';
+        break;
+      case 't':
+        buf[i++] = '\t';
+        break;
+      default:
+        buf[i++] = *(*cursor_ptr - 1);
+        break;
+      }
+    } else {
+      buf[i++] = *(*cursor_ptr)++;
+    }
+  }
+  buf[i] = '\0';
+  json_element *out = json_str(buf);
+  free(buf);
+  if (**cursor_ptr == '\"')
+    (*cursor_ptr)++;
+  return out;
+}
+
+json_element *json_parse_element(char **cursor_ptr);
+
+static json_element *parse_arr(char **cursor_ptr) {
+  json_element *out = json_create_element(JSON_ARRAY);
+  if (!out)
+    return NULL;
+  (*cursor_ptr)++;
+  skip_whitespace(cursor_ptr);
+  if (**cursor_ptr != ']') {
+    for (;;) {
+      json_append(out, json_parse_element(cursor_ptr));
+      skip_whitespace(cursor_ptr);
+      if (**cursor_ptr != ',')
+        break;
+      (*cursor_ptr)++;
+      skip_whitespace(cursor_ptr);
+    }
+  }
+  if (**cursor_ptr == ']') {
+    (*cursor_ptr)++;
+    return out;
+  }
+  json_free_element(out);
+  return json_nul();
+}
+
+static json_element *parse_obj(char **cursor_ptr) {
+  json_element *out = json_create_element(JSON_OBJECT);
+  if (!out)
+    return NULL;
+  (*cursor_ptr)++;
+  skip_whitespace(cursor_ptr);
+  if (**cursor_ptr != '}') {
+    for (;;) {
+      if (*(*cursor_ptr)++ != '"')
+        break;
+      json_element *key = parse_str(cursor_ptr);
+      if (!key)
+        break;
+      skip_whitespace(cursor_ptr);
+      if (*(*cursor_ptr)++ != ':') {
+        json_free_element(key);
+        break;
+      }
+      skip_whitespace(cursor_ptr);
+      json_set_key(out, key->_ptr, json_parse_element(cursor_ptr));
+      json_free_element(key);
+      skip_whitespace(cursor_ptr);
+      if (**cursor_ptr != ',')
+        break;
+      (*cursor_ptr)++;
+      skip_whitespace(cursor_ptr);
+    }
+  }
+  if (**cursor_ptr == '}') {
+    (*cursor_ptr)++;
+    return out;
+  }
+  json_free_element(out);
+  return json_nul();
+}
+
+json_element *json_parse_element(char **cursor_ptr) {
+  skip_whitespace(cursor_ptr);
+  char cur = **cursor_ptr;
+  if (cur == '"') {
+    (*cursor_ptr)++;
+    return parse_str(cursor_ptr);
+  }
+  if (cur == '[')
+    return parse_arr(cursor_ptr);
+  if (cur == '{')
+    return parse_obj(cursor_ptr);
+  if (cur == 't' && !strncmp(*cursor_ptr, "true", 4)) {
+    *cursor_ptr += 4;
+    return json_boo(true);
+  }
+  if (cur == 'f' && !strncmp(*cursor_ptr, "false", 5)) {
+    *cursor_ptr += 5;
+    return json_boo(false);
+  }
+  if (cur == 'n' && !strncmp(*cursor_ptr, "null", 4)) {
+    *cursor_ptr += 4;
+    return json_nul();
+  }
+  if (isdigit(cur) || cur == '-') {
+    char *end;
+    float val = strtof(*cursor_ptr, &end);
+    if (end != *cursor_ptr) {
+      *cursor_ptr = end;
+      return json_num(val);
+    }
+  }
+  return json_nul();
+}
+
+json_element *json_parse(char *input) { return json_parse_element(&input); }
 
 void _json_stringify_internal(json_element *element, bool pretty_print,
                               FILE *buffer) {

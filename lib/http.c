@@ -183,13 +183,15 @@ int http_parse_request(char *request_str, http_request *request) {
   return 0;
 }
 
-char *http_headers_to_string(struct http_request_headers *headers) {
+char *http_headers_to_string(struct http_request_headers *headers,
+                             bool pretty_print) {
   int offset = 0;
   char *out = malloc(headers->_bufsize * sizeof(char));
   http_header *current = headers->head;
   while (current != NULL) {
-    offset += snprintf(out + offset, headers->_bufsize - offset, "%s: %s\n",
-                       current->key, current->value);
+    offset += snprintf(out + offset, headers->_bufsize - offset,
+                       pretty_print ? "%s: %s\n" : "{%s:%s},", current->key,
+                       current->value);
     current = current->next;
   }
   return out;
@@ -282,6 +284,8 @@ char *http_encode_response(struct http_response *response) {
   return str;
 }
 int http_respond(struct http_response *response, struct http_request *request) {
+  if (response->body == NULL)
+    return -1;
   char *buf = malloc(sizeof(char) *
                      (snprintf(0, 0, "%ld", strlen(response->body)) + 2));
   sprintf(buf, "%ld", strlen(response->body));
@@ -339,8 +343,6 @@ void http_server_listen(struct http_server server) {
 
   conn_count = 1;
 
-  printf("waiting for connections...");
-
   for (;;) {
     int poll_count = poll(pfds, conn_count, -1);
 
@@ -367,7 +369,7 @@ void http_server_listen(struct http_server server) {
             del_from_pfds(pfds, i, &conn_count);
           } else {
             buf[nbytes] = '\0';
-            http_request *request = malloc(sizeof(http_request));
+            http_request *request = calloc(1, sizeof(http_request));
 
             if (http_parse_request(buf, request) != 0) {
               fprintf(stderr, "Failed to parse HTTP request.\n");

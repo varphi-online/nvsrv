@@ -2,6 +2,7 @@
 #define HTTP_H
 
 #include <netdb.h>
+#include <stdbool.h>
 #include <sys/socket.h>
 
 enum http_method {
@@ -95,6 +96,7 @@ void http_set_response_status(struct http_response *response, int status);
 
 void http_set_response_header(struct http_response *response, char *key,
                               char *value);
-char *http_headers_to_string(struct http_request_headers *headers);
+char *http_headers_to_string(struct http_request_headers *headers,
+                             bool pretty_print);
 
 #endif
